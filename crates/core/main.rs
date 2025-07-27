@@ -278,6 +278,22 @@ fn search_parallel_sorted(
                 None => return WalkState::Continue,
             };
             searched.store(true, Ordering::SeqCst);
+            // Capture timestamp BEFORE searching, since the search itself may
+            // update access times on some systems. Single-threaded sorting
+            // reads timestamps before search, so we mirror that behavior.
+            let pre_time = match kind {
+                crate::flags::SortModeKind::Path => None,
+                crate::flags::SortModeKind::LastModified => {
+                    haystack.path().metadata().and_then(|m| m.modified()).ok()
+                }
+                crate::flags::SortModeKind::LastAccessed => {
+                    haystack.path().metadata().and_then(|m| m.accessed()).ok()
+                }
+                crate::flags::SortModeKind::Created => {
+                    haystack.path().metadata().and_then(|m| m.created()).ok()
+                }
+            };
+
             // Clear buffer and search.
             searcher.printer().get_mut().clear();
             let search_result = match searcher.search(&haystack) {
@@ -299,19 +315,8 @@ fn search_parallel_sorted(
                 *st += search_result.stats().unwrap();
             }
 
-            // Compute timestamp if needed.
-            let time = match kind {
-                crate::flags::SortModeKind::Path => None,
-                crate::flags::SortModeKind::LastModified => {
-                    haystack.path().metadata().and_then(|m| m.modified()).ok()
-                }
-                crate::flags::SortModeKind::LastAccessed => {
-                    haystack.path().metadata().and_then(|m| m.accessed()).ok()
-                }
-                crate::flags::SortModeKind::Created => {
-                    haystack.path().metadata().and_then(|m| m.created()).ok()
-                }
-            };
+            // Use the timestamp captured before reading the file.
+            let time = pre_time;
 
             // Move the buffer out of the printer by replacing it with a fresh
             // buffer, so we can send the original to the coordinator.
