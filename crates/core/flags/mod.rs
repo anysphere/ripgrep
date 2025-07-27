@@ -35,7 +35,7 @@ pub(crate) use crate::flags::{
         },
     },
     hiargs::HiArgs,
-    lowargs::{GenerateMode, Mode, SearchMode, SpecialMode, SortModeKind},
+    lowargs::{GenerateMode, Mode, SearchMode, SortModeKind, SpecialMode},
     parse::{parse, ParseResult},
 };
 
