@@ -302,6 +302,7 @@ jobs:
         gh release upload "$version" ${{ env.ASSET }} ${{ env.ASSET_SUM }}
 
   build-release-deb:
+    if: ${{ false }}
     name: build-release-deb
     needs: ['create-release']
     runs-on: ubuntu-latest
