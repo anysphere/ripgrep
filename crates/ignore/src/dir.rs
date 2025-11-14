@@ -46,6 +46,7 @@ enum IgnoreMatchInner<'a> {
     Gitignore(&'a gitignore::Glob),
     Types(types::Glob<'a>),
     Hidden,
+    VcsDir,
 }
 
 impl<'a> IgnoreMatch<'a> {
@@ -63,6 +64,10 @@ impl<'a> IgnoreMatch<'a> {
 
     fn hidden() -> IgnoreMatch<'static> {
         IgnoreMatch(IgnoreMatchInner::Hidden)
+    }
+
+    fn vcs_dir() -> IgnoreMatch<'static> {
+        IgnoreMatch(IgnoreMatchInner::VcsDir)
     }
 }
 
@@ -427,6 +432,27 @@ impl Ignore {
                 return mat;
             }
         }
+
+        // Exclude common VCS directories when VCS ignore is enabled,
+        // unless they've been whitelisted by cursor ignores or overrides.
+        // This matches git's default behavior of excluding VCS directories.
+        // Supported VCS directories: .git (Git), .jj (Jujutsu), .hg (Mercurial),
+        // .svn (Subversion), .bzr (Bazaar), CVS (CVS).
+        if is_dir && whitelisted.is_none() {
+            if let Some(file_name) = path.file_name() {
+                let is_vcs_dir = matches!(
+                    file_name.to_str(),
+                    Some(".git" | ".jj" | ".hg" | ".svn" | ".bzr" | "CVS")
+                );
+                if is_vcs_dir
+                    && (self.0.opts.git_ignore || self.0.opts.git_exclude)
+                {
+                    // Return an ignore match indicating this is a VCS directory exclusion.
+                    return Match::Ignore(IgnoreMatch::vcs_dir());
+                }
+            }
+        }
+
         // Continue with standard ignore/type precedence, taking into account
         // any whitelist from cursor-ignores above.
         if self.has_any_ignore_rules() {
