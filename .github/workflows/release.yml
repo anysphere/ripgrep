@@ -86,7 +86,6 @@ jobs:
           target: aarch64-unknown-linux-musl
           strip: aarch64-linux-musl-strip
           qemu: qemu-aarch64
-<<<<<<< HEAD
       # - build: stable-arm-gnueabihf
       #   os: ubuntu-latest
       #   rust: stable
@@ -117,41 +116,11 @@ jobs:
       #   target: s390x-unknown-linux-gnu
       #   strip: s390x-linux-gnu-strip
       #   qemu: qemu-s390x
-=======
-        - build: stable-arm-gnueabihf
-          os: ubuntu-latest
-          rust: stable
-          target: armv7-unknown-linux-gnueabihf
-          strip: arm-linux-gnueabihf-strip
-          qemu: qemu-arm
-        - build: stable-arm-musleabihf
-          os: ubuntu-latest
-          rust: stable
-          target: armv7-unknown-linux-musleabihf
-          strip: arm-linux-musleabihf-strip
-          qemu: qemu-arm
-        - build: stable-arm-musleabi
-          os: ubuntu-latest
-          rust: stable
-          target: armv7-unknown-linux-musleabi
-          strip: arm-linux-musleabi-strip
-          qemu: qemu-arm
-        - build: stable-s390x
-          os: ubuntu-latest
-          rust: stable
-          target: s390x-unknown-linux-gnu
-          strip: s390x-linux-gnu-strip
-          qemu: qemu-s390x
->>>>>>> 15.1.0
         - build: macos
           os: macos-latest
           rust: nightly
           target: x86_64-apple-darwin
-<<<<<<< HEAD
         - build: macos-arm
-=======
-        - build: macos
->>>>>>> 15.1.0
           os: macos-latest
           rust: nightly
           target: aarch64-apple-darwin
@@ -225,15 +194,9 @@ jobs:
     - name: Build release binary
       shell: bash
       run: |
-<<<<<<< HEAD
-        ${{ env.CARGO }} build --verbose --release --features pcre2 ${{ env.TARGET_FLAGS }}
-        if [[ "${{ matrix.os }}" == windows-* ]]; then
-          bin="target/${{ matrix.target }}/release/rg.exe"
-=======
         ${{ env.CARGO }} build --verbose --profile release-lto --features pcre2 ${{ env.TARGET_FLAGS }}
         if [[ "${{ matrix.os }}" == windows-* ]]; then
           bin="target/${{ matrix.target }}/release-lto/rg.exe"
->>>>>>> 15.1.0
         else
           bin="target/${{ matrix.target }}/release-lto/rg"
         fi
