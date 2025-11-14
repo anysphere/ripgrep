@@ -58,13 +58,13 @@ assert_eq!(output, expected);
 */
 
 #![deny(missing_docs)]
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub use crate::{
-    color::{default_color_specs, ColorError, ColorSpecs, UserColorSpec},
+    color::{ColorError, ColorSpecs, UserColorSpec, default_color_specs},
     hyperlink::{
-        HyperlinkConfig, HyperlinkEnvironment, HyperlinkFormat,
-        HyperlinkFormatError,
+        HyperlinkAlias, HyperlinkConfig, HyperlinkEnvironment,
+        HyperlinkFormat, HyperlinkFormatError, hyperlink_aliases,
     },
     path::{PathPrinter, PathPrinterBuilder},
     standard::{Standard, StandardBuilder, StandardSink},
@@ -73,7 +73,7 @@ pub use crate::{
 };
 
 #[cfg(feature = "serde")]
-pub use crate::json::{JSONBuilder, JSONSink, JSON};
+pub use crate::json::{JSON, JSONBuilder, JSONSink};
 
 // The maximum number of bytes to execute a search to account for look-ahead.
 //
@@ -92,7 +92,6 @@ mod macros;
 mod color;
 mod counter;
 mod hyperlink;
-mod hyperlink_aliases;
 #[cfg(feature = "serde")]
 mod json;
 #[cfg(feature = "serde")]

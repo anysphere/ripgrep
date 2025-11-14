@@ -302,17 +302,34 @@ and **openSUSE Leap** since 15.1.
 $ sudo zypper install ripgrep
 ```
 
-If you're a **RHEL/CentOS 7/8** user, you can install ripgrep from
-[copr](https://copr.fedorainfracloud.org/coprs/carlwgeorge/ripgrep/):
+If you're a **CentOS Stream 10** user, you can install ripgrep from the
+[EPEL](https://docs.fedoraproject.org/en-US/epel/getting-started/) repository:
 
 ```
-$ sudo yum install -y yum-utils
-$ sudo yum-config-manager --add-repo=https://copr.fedorainfracloud.org/coprs/carlwgeorge/ripgrep/repo/epel-7/carlwgeorge-ripgrep-epel-7.repo
-$ sudo yum install ripgrep
+$ sudo dnf config-manager --set-enabled crb
+$ sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm
+$ sudo dnf install ripgrep
+```
+
+If you're a **Red Hat 10** user, you can install ripgrep from the
+[EPEL](https://docs.fedoraproject.org/en-US/epel/getting-started/) repository:
+
+```
+$ sudo subscription-manager repos --enable codeready-builder-for-rhel-10-$(arch)-rpms
+$ sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm
+$ sudo dnf install ripgrep
+```
+
+If you're a **Rocky Linux 10** user, you can install ripgrep from the
+[EPEL](https://docs.fedoraproject.org/en-US/epel/getting-started/) repository:
+
+```
+$ sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm
+$ sudo dnf install ripgrep
 ```
 
 If you're a **Nix** user, you can install ripgrep from
-[nixpkgs](https://github.com/NixOS/nixpkgs/blob/master/pkgs/tools/text/ripgrep/default.nix):
+[nixpkgs](https://github.com/NixOS/nixpkgs/blob/master/pkgs/by-name/ri/ripgrep/package.nix):
 
 ```
 $ nix-env --install ripgrep
@@ -336,8 +353,8 @@ then ripgrep can be installed using a binary `.deb` file provided in each
 [ripgrep release](https://github.com/BurntSushi/ripgrep/releases).
 
 ```
-$ curl -LO https://github.com/BurntSushi/ripgrep/releases/download/14.1.0/ripgrep_14.1.0-1_amd64.deb
-$ sudo dpkg -i ripgrep_14.1.0-1_amd64.deb
+$ curl -LO https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep_14.1.1-1_amd64.deb
+$ sudo dpkg -i ripgrep_14.1.1-1_amd64.deb
 ```
 
 If you run Debian stable, ripgrep is [officially maintained by
@@ -412,7 +429,7 @@ $ sudo xbps-install -Syv ripgrep
 
 If you're a **Rust programmer**, ripgrep can be installed with `cargo`.
 
-* Note that the minimum supported version of Rust for ripgrep is **1.72.0**,
+* Note that the minimum supported version of Rust for ripgrep is **1.85.0**,
   although ripgrep may work with older versions.
 * Note that the binary may be bigger than expected because it contains debug
   symbols. This is intentional. To remove debug symbols and therefore reduce
@@ -435,7 +452,7 @@ $ cargo binstall ripgrep
 
 ripgrep is written in Rust, so you'll need to grab a
 [Rust installation](https://www.rust-lang.org/) in order to compile it.
-ripgrep compiles with Rust 1.72.0 (stable) or newer. In general, ripgrep tracks
+ripgrep compiles with Rust 1.85.0 (stable) or newer. In general, ripgrep tracks
 the latest stable release of the Rust compiler.
 
 To build ripgrep:

@@ -1,5 +1,5 @@
 use crate::hay::{SHERLOCK, SHERLOCK_CRLF};
-use crate::util::{sort_lines, Dir, TestCommand};
+use crate::util::{Dir, TestCommand, sort_lines};
 
 // See: https://github.com/BurntSushi/ripgrep/issues/1
 rgtest!(f1_sjis, |dir: Dir, mut cmd: TestCommand| {
@@ -154,7 +154,7 @@ test
     // parent ignore files and manually specified ignore files.
     let mut cmd = dir.command();
     cmd.args(&["--ignore-file", "../.not-an-ignore", "-l", "test"]);
-    cmd.current_dir(dir.path().join("baz"));
+    cmd.current_dir("baz");
     let expected = "
 baz/bar/test
 test
@@ -943,18 +943,18 @@ rgtest!(f2361_sort_nested_files, |dir: Dir, mut cmd: TestCommand| {
         return;
     }
     dir.create("foo", "1");
-    sleep(Duration::from_millis(100));
+    sleep(Duration::from_millis(200));
     dir.create_dir("dir");
-    sleep(Duration::from_millis(100));
+    sleep(Duration::from_millis(200));
     dir.create(dir.path().join("dir").join("bar"), "1");
 
     cmd.arg("--sort").arg("accessed").arg("--files");
     eqnice!("foo\ndir/bar\n", cmd.stdout());
 
     dir.create("foo", "2");
-    sleep(Duration::from_millis(100));
+    sleep(Duration::from_millis(200));
     dir.create(dir.path().join("dir").join("bar"), "2");
-    sleep(Duration::from_millis(100));
+    sleep(Duration::from_millis(200));
 
     cmd.arg("--sort").arg("accessed").arg("--files");
     eqnice!("foo\ndir/bar\n", cmd.stdout());

@@ -4,7 +4,7 @@ Provides routines for generating ripgrep's man page in `roff` format.
 
 use std::{collections::BTreeMap, fmt::Write};
 
-use crate::flags::{defs::FLAGS, doc::version, Flag};
+use crate::flags::{Flag, defs::FLAGS, doc::version};
 
 const TEMPLATE: &'static str = include_str!("template.rg.1");
 
@@ -53,7 +53,7 @@ fn generate_flag(flag: &'static dyn Flag, out: &mut String) {
         write!(out, r", ");
     }
 
-    let name = flag.name_long();
+    let name = flag.name_long().replace("-", r"\-");
     write!(out, r"\fB\-\-{name}\fP");
     if let Some(var) = flag.doc_variable() {
         write!(out, r"=\fI{var}\fP");
@@ -71,7 +71,7 @@ fn generate_flag(flag: &'static dyn Flag, out: &mut String) {
         if let Some(name) = flag.name_short() {
             write!(out, r"\-{}/", char::from(name));
         }
-        write!(out, r"\-\-{}", flag.name_long());
+        write!(out, r"\-\-{}", flag.name_long().replace("-", r"\-"));
         out.push_str(r"\fP");
     });
     // Convert \flag-negate{foo} into something nicer.

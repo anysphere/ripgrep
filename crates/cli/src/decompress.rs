@@ -177,7 +177,7 @@ impl DecompressionMatcher {
     /// If there are multiple possible commands matching the given path, then
     /// the command added last takes precedence.
     pub fn command<P: AsRef<Path>>(&self, path: P) -> Option<Command> {
-        for i in self.globs.matches(path).into_iter().rev() {
+        if let Some(i) = self.globs.matches(path).into_iter().next_back() {
             let decomp_cmd = &self.commands[i];
             let mut cmd = Command::new(&decomp_cmd.bin);
             cmd.args(&decomp_cmd.args);
@@ -413,6 +413,8 @@ impl io::Read for DecompressionReader {
 /// Note that this could still return a relative path if PATH contains a
 /// relative path. We permit this since it is assumed that the user has set
 /// this explicitly, and thus, desires this behavior.
+///
+/// # Platform behavior
 ///
 /// On non-Windows, this is a no-op.
 pub fn resolve_binary<P: AsRef<Path>>(

@@ -1,9 +1,9 @@
 use grep_matcher::Matcher;
 
 use crate::{
-    line_buffer::{LineBufferReader, DEFAULT_BUFFER_CAPACITY},
+    line_buffer::{DEFAULT_BUFFER_CAPACITY, LineBufferReader},
     lines::{self, LineStep},
-    searcher::{core::Core, Config, Range, Searcher},
+    searcher::{Config, Range, Searcher, core::Core},
     sink::{Sink, SinkError},
 };
 
@@ -37,13 +37,22 @@ where
 
     pub(crate) fn run(mut self) -> Result<(), S::Error> {
         if self.core.begin()? {
-            while self.fill()? && self.core.match_by_line(self.rdr.buffer())? {
+            while self.fill()? {
+                if !self.core.match_by_line(self.rdr.buffer())? {
+                    self.consume_remaining();
+                    break;
+                }
             }
         }
         self.core.finish(
             self.rdr.absolute_byte_offset(),
             self.rdr.binary_byte_offset(),
         )
+    }
+
+    fn consume_remaining(&mut self) {
+        let consumed = self.core.pos();
+        self.rdr.consume(consumed);
     }
 
     fn fill(&mut self) -> Result<bool, S::Error> {
@@ -316,11 +325,9 @@ impl<'s, M: Matcher, S: Sink> MultiLine<'s, M, S> {
     }
 
     fn find(&mut self) -> Result<Option<Range>, S::Error> {
-        match self.core.matcher().find(&self.slice[self.core.pos()..]) {
-            Err(err) => Err(S::Error::error_message(err)),
-            Ok(None) => Ok(None),
-            Ok(Some(m)) => Ok(Some(m.offset(self.core.pos()))),
-        }
+        self.core
+            .find(&self.slice[self.core.pos()..])
+            .map(|m| m.map(|m| m.offset(self.core.pos())))
     }
 
     /// Advance the search position based on the previous match.

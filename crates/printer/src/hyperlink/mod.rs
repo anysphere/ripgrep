@@ -5,7 +5,11 @@ use {
     termcolor::{HyperlinkSpec, WriteColor},
 };
 
-use crate::{hyperlink_aliases, util::DecimalFormatter};
+use crate::util::DecimalFormatter;
+
+use self::aliases::HYPERLINK_PATTERN_ALIASES;
+
+mod aliases;
 
 /// Hyperlink configuration.
 ///
@@ -107,8 +111,8 @@ impl std::str::FromStr for HyperlinkFormat {
         }
 
         let mut builder = FormatBuilder::new();
-        let input = match hyperlink_aliases::find(s) {
-            Some(format) => format,
+        let input = match HyperlinkAlias::find(s) {
+            Some(alias) => alias.format(),
             None => s,
         };
         let mut name = String::new();
@@ -176,6 +180,63 @@ impl std::fmt::Display for HyperlinkFormat {
             part.fmt(f)?;
         }
         Ok(())
+    }
+}
+
+/// An alias for a hyperlink format.
+///
+/// Hyperlink aliases are built-in formats, therefore they hold static values.
+/// Some of their features are usable in const blocks.
+#[derive(Clone, Debug)]
+pub struct HyperlinkAlias {
+    name: &'static str,
+    description: &'static str,
+    format: &'static str,
+    display_priority: Option<i16>,
+}
+
+impl HyperlinkAlias {
+    /// Returns the name of the alias.
+    pub const fn name(&self) -> &str {
+        self.name
+    }
+
+    /// Returns a very short description of this hyperlink alias.
+    pub const fn description(&self) -> &str {
+        self.description
+    }
+
+    /// Returns the display priority of this alias.
+    ///
+    /// If no priority is set, then `None` is returned.
+    ///
+    /// The display priority is meant to reflect some special status associated
+    /// with an alias. For example, the `default` and `none` aliases have a
+    /// display priority. This is meant to encourage listing them first in
+    /// documentation.
+    ///
+    /// A lower display priority implies the alias should be shown before
+    /// aliases with a higher (or absent) display priority.
+    ///
+    /// Callers cannot rely on any specific display priority value to remain
+    /// stable across semver compatible releases of this crate.
+    pub const fn display_priority(&self) -> Option<i16> {
+        self.display_priority
+    }
+
+    /// Returns the format string of the alias.
+    const fn format(&self) -> &'static str {
+        self.format
+    }
+
+    /// Looks for the hyperlink alias defined by the given name.
+    ///
+    /// If one does not exist, `None` is returned.
+    fn find(name: &str) -> Option<&HyperlinkAlias> {
+        HYPERLINK_PATTERN_ALIASES
+            .binary_search_by_key(&name, |alias| alias.name())
+            .map(|i| &HYPERLINK_PATTERN_ALIASES[i])
+            .ok()
     }
 }
 
@@ -255,15 +316,18 @@ impl std::fmt::Display for HyperlinkFormatError {
 
         match self.kind {
             NoVariables => {
-                let aliases = hyperlink_aliases::iter()
-                    .map(|(name, _)| name)
-                    .collect::<Vec<&str>>()
-                    .join(", ");
+                let mut aliases = hyperlink_aliases();
+                aliases.sort_by_key(|alias| {
+                    alias.display_priority().unwrap_or(i16::MAX)
+                });
+                let names: Vec<&str> =
+                    aliases.iter().map(|alias| alias.name()).collect();
                 write!(
                     f,
                     "at least a {{path}} variable is required in a \
-                     hyperlink format, or otherwise use a valid alias: {}",
-                    aliases,
+                     hyperlink format, or otherwise use a valid alias: \
+                     {aliases}",
+                    aliases = names.join(", "),
                 )
             }
             NoPathVariable => {
@@ -418,7 +482,7 @@ impl FormatBuilder {
         let err_invalid_scheme = HyperlinkFormatError {
             kind: HyperlinkFormatErrorKind::InvalidScheme,
         };
-        let Some(Part::Text(ref part)) = self.parts.first() else {
+        let Some(Part::Text(part)) = self.parts.first() else {
             return Err(err_invalid_scheme);
         };
         let Some(colon) = part.find_byte(b':') else {
@@ -474,7 +538,7 @@ impl Part {
         values: &Values,
         dest: &mut Vec<u8>,
     ) {
-        match self {
+        match *self {
             Part::Text(ref text) => dest.extend_from_slice(text),
             Part::Host => dest.extend_from_slice(
                 env.host.as_ref().map(|s| s.as_bytes()).unwrap_or(b""),
@@ -702,16 +766,20 @@ impl HyperlinkPath {
     /// Returns a hyperlink path from an OS path.
     #[cfg(windows)]
     pub(crate) fn from_path(original_path: &Path) -> Option<HyperlinkPath> {
-        // On Windows, Path::canonicalize returns the result of
-        // GetFinalPathNameByHandleW with VOLUME_NAME_DOS,
-        // which produces paths such as the following:
+        // On Windows, we use `std::path::absolute` instead of `Path::canonicalize`
+        // as it can be much faster since it does not touch the file system.
+        // It wraps the [`GetFullPathNameW`][1] API, except for verbatim paths
+        // (those which start with `\\?\`, see [the documentation][2] for details).
+        //
+        // Here, we strip any verbatim path prefixes since we cannot use them
+        // in hyperlinks anyway. This can only happen if the user explicitly
+        // supplies a verbatim path as input, which already needs to be absolute:
         //
         //   \\?\C:\dir\file.txt           (local path)
         //   \\?\UNC\server\dir\file.txt   (network share)
         //
-        // The \\?\ prefix comes from VOLUME_NAME_DOS and is constant.
-        // It is followed either by the drive letter, or by UNC\
-        // (universal naming convention), which denotes a network share.
+        // The `\\?\` prefix is constant for verbatim paths, and can be followed
+        // by `UNC\` (universal naming convention), which denotes a network share.
         //
         // Given that the default URL format on Windows is file://{path}
         // we need to return the following from this function:
@@ -750,18 +818,19 @@ impl HyperlinkPath {
         //
         // It doesn't parse any other number of slashes in "file//server" as a
         // network path.
+        //
+        // [1]: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfullpathnamew
+        // [2]: https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file
 
         const WIN32_NAMESPACE_PREFIX: &str = r"\\?\";
         const UNC_PREFIX: &str = r"UNC\";
 
-        // As for Unix, we canonicalize the path to make sure we have an
-        // absolute path.
-        let path = match original_path.canonicalize() {
+        let path = match std::path::absolute(original_path) {
             Ok(path) => path,
             Err(err) => {
                 log::debug!(
                     "hyperlink creation for {:?} failed, error occurred \
-                     during path canonicalization: {}",
+                     during conversion to absolute path: {}",
                     original_path,
                     err,
                 );
@@ -784,24 +853,20 @@ impl HyperlinkPath {
                 return None;
             }
         };
-        // As the comment above says, we expect all canonicalized paths to
-        // begin with a \\?\. If it doesn't, then something weird is happening
-        // and we should just give up.
-        if !string.starts_with(WIN32_NAMESPACE_PREFIX) {
-            log::debug!(
-                "hyperlink creation for {:?} failed, canonicalization \
-                 returned {:?}, which does not start with \\\\?\\",
-                original_path,
-                path,
-            );
-            return None;
-        }
-        string = &string[WIN32_NAMESPACE_PREFIX.len()..];
 
-        // And as above, drop the UNC prefix too, but keep the leading slash.
-        if string.starts_with(UNC_PREFIX) {
-            string = &string[(UNC_PREFIX.len() - 1)..];
+        // Strip verbatim path prefixes (see the comment above for details).
+        if string.starts_with(WIN32_NAMESPACE_PREFIX) {
+            string = &string[WIN32_NAMESPACE_PREFIX.len()..];
+
+            // Drop the UNC prefix if there is one, but keep the leading slash.
+            if string.starts_with(UNC_PREFIX) {
+                string = &string[(UNC_PREFIX.len() - 1)..];
+            }
+        } else if string.starts_with(r"\\") || string.starts_with(r"//") {
+            // Drop one of the two leading slashes of network paths, it will be added back.
+            string = &string[1..];
         }
+
         // Finally, add a leading slash. In the local file case, this turns
         // C:\foo\bar into /C:\foo\bar (and then percent encoding turns it into
         // /C:/foo/bar). In the network share case, this turns \share\foo\bar
@@ -860,6 +925,26 @@ impl HyperlinkPath {
         }
         HyperlinkPath(result)
     }
+}
+
+/// Returns the set of hyperlink aliases supported by this crate.
+///
+/// Aliases are supported by the `FromStr` trait implementation of a
+/// [`HyperlinkFormat`]. That is, if an alias is seen, then it is automatically
+/// replaced with the corresponding format. For example, the `vscode` alias
+/// maps to `vscode://file{path}:{line}:{column}`.
+///
+/// This is exposed to allow callers to include hyperlink aliases in
+/// documentation in a way that is guaranteed to match what is actually
+/// supported.
+///
+/// The list returned is guaranteed to be sorted lexicographically
+/// by the alias name. Callers may want to re-sort the list using
+/// [`HyperlinkAlias::display_priority`] via a stable sort when showing the
+/// list to users. This will cause special aliases like `none` and `default` to
+/// appear first.
+pub fn hyperlink_aliases() -> Vec<HyperlinkAlias> {
+    HYPERLINK_PATTERN_ALIASES.iter().cloned().collect()
 }
 
 #[cfg(test)]
@@ -1005,5 +1090,76 @@ mod tests {
             HyperlinkFormat::from_str("foo://{bar{{}").unwrap_err(),
             err(InvalidVariable("bar{{".to_string())),
         );
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn convert_to_hyperlink_path() {
+        let convert = |path| {
+            String::from_utf8(
+                HyperlinkPath::from_path(Path::new(path)).unwrap().0,
+            )
+            .unwrap()
+        };
+
+        assert_eq!(convert(r"C:\dir\file.txt"), "/C:/dir/file.txt");
+        assert_eq!(
+            convert(r"C:\foo\bar\..\other\baz.txt"),
+            "/C:/foo/other/baz.txt"
+        );
+
+        assert_eq!(convert(r"\\server\dir\file.txt"), "//server/dir/file.txt");
+        assert_eq!(
+            convert(r"\\server\dir\foo\..\other\file.txt"),
+            "//server/dir/other/file.txt"
+        );
+
+        assert_eq!(convert(r"\\?\C:\dir\file.txt"), "/C:/dir/file.txt");
+        assert_eq!(
+            convert(r"\\?\UNC\server\dir\file.txt"),
+            "//server/dir/file.txt"
+        );
+    }
+
+    #[test]
+    fn aliases_are_sorted() {
+        let aliases = hyperlink_aliases();
+        let mut prev =
+            aliases.first().expect("aliases should be non-empty").name();
+        for alias in aliases.iter().skip(1) {
+            let name = alias.name();
+            assert!(
+                name > prev,
+                "'{prev}' should come before '{name}' in \
+                 HYPERLINK_PATTERN_ALIASES",
+            );
+            prev = name;
+        }
+    }
+
+    #[test]
+    fn alias_names_are_reasonable() {
+        for alias in hyperlink_aliases() {
+            // There's no hard rule here, but if we want to define an alias
+            // with a name that doesn't pass this assert, then we should
+            // probably flag it as worthy of consideration. For example, we
+            // really do not want to define an alias that contains `{` or `}`,
+            // which might confuse it for a variable.
+            assert!(alias.name().chars().all(|c| c.is_alphanumeric()
+                || c == '+'
+                || c == '-'
+                || c == '.'));
+        }
+    }
+
+    #[test]
+    fn aliases_are_valid_formats() {
+        for alias in hyperlink_aliases() {
+            let (name, format) = (alias.name(), alias.format());
+            assert!(
+                format.parse::<HyperlinkFormat>().is_ok(),
+                "invalid hyperlink alias '{name}': {format}",
+            );
+        }
     }
 }

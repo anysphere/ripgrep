@@ -1,19 +1,19 @@
 use std::{
     io::{self, Write},
     path::Path,
+    sync::Arc,
     time::Instant,
 };
 
 use {
     grep_matcher::{Match, Matcher},
-    grep_searcher::{
-        Searcher, Sink, SinkContext, SinkContextKind, SinkFinish, SinkMatch,
-    },
+    grep_searcher::{Searcher, Sink, SinkContext, SinkFinish, SinkMatch},
     serde_json as json,
 };
 
 use crate::{
-    counter::CounterWriter, jsont, stats::Stats, util::find_iter_at_in_context,
+    counter::CounterWriter, jsont, stats::Stats, util::Replacer,
+    util::find_iter_at_in_context,
 };
 
 /// The configuration for the JSON printer.
@@ -24,13 +24,17 @@ use crate::{
 #[derive(Debug, Clone)]
 struct Config {
     pretty: bool,
-    max_matches: Option<u64>,
     always_begin_end: bool,
+    replacement: Arc<Option<Vec<u8>>>,
 }
 
 impl Default for Config {
     fn default() -> Config {
-        Config { pretty: false, max_matches: None, always_begin_end: false }
+        Config {
+            pretty: false,
+            always_begin_end: false,
+            replacement: Arc::new(None),
+        }
     }
 }
 
@@ -77,16 +81,6 @@ impl JSONBuilder {
         self
     }
 
-    /// Set the maximum amount of matches that are printed.
-    ///
-    /// If multi line search is enabled and a match spans multiple lines, then
-    /// that match is counted exactly once for the purposes of enforcing this
-    /// limit, regardless of how many lines it spans.
-    pub fn max_matches(&mut self, limit: Option<u64>) -> &mut JSONBuilder {
-        self.config.max_matches = limit;
-        self
-    }
-
     /// When enabled, the `begin` and `end` messages are always emitted, even
     /// when no match is found.
     ///
@@ -96,6 +90,24 @@ impl JSONBuilder {
     /// This is disabled by default.
     pub fn always_begin_end(&mut self, yes: bool) -> &mut JSONBuilder {
         self.config.always_begin_end = yes;
+        self
+    }
+
+    /// Set the bytes that will be used to replace each occurrence of a match
+    /// found.
+    ///
+    /// The replacement bytes given may include references to capturing groups,
+    /// which may either be in index form (e.g., `$2`) or can reference named
+    /// capturing groups if present in the original pattern (e.g., `$foo`).
+    ///
+    /// For documentation on the full format, please see the `Capture` trait's
+    /// `interpolate` method in the
+    /// [grep-printer](https://docs.rs/grep-printer) crate.
+    pub fn replacement(
+        &mut self,
+        replacement: Option<Vec<u8>>,
+    ) -> &mut JSONBuilder {
+        self.config.replacement = Arc::new(replacement);
         self
     }
 }
@@ -256,7 +268,8 @@ impl JSONBuilder {
 ///   encoded, then the byte offsets correspond to the data after base64
 ///   decoding.) The `submatch` objects are guaranteed to be sorted by their
 ///   starting offsets. Note that it is possible for this array to be empty,
-///   for example, when searching reports inverted matches.
+///   for example, when searching reports inverted matches. If the configuration
+///   specifies a replacement, the resulting replacement text is also present.
 ///
 /// #### Message: **context**
 ///
@@ -286,7 +299,9 @@ impl JSONBuilder {
 ///   decoding.) The `submatch` objects are guaranteed to be sorted by
 ///   their starting offsets. Note that it is possible for this array to be
 ///   non-empty, for example, when searching reports inverted matches such that
-///   the original matcher could match things in the contextual lines.
+///   the original matcher could match things in the contextual lines. If the
+///   configuration specifies a replacemement, the resulting replacement text
+///   is also present.
 ///
 /// #### Object: **submatch**
 ///
@@ -308,6 +323,10 @@ impl JSONBuilder {
 ///   the `lines` field in the
 ///   [`match`](#message-match) or [`context`](#message-context)
 ///   messages.
+/// * **replacement** (optional) - An
+///   [arbitrary data object](#object-arbitrary-data) corresponding to the
+///   replacement text for this submatch, if the configuration specifies
+///   a replacement.
 ///
 /// #### Object: **stats**
 ///
@@ -447,6 +466,23 @@ impl JSONBuilder {
 ///   }
 /// }
 /// ```
+/// and here's what a match type item would looks like if a replacement text
+/// of 'Moriarity' was given as a parameter:
+/// ```json
+/// {
+///   "type": "match",
+///   "data": {
+///     "path": {"text": "/home/andrew/sherlock"},
+///     "lines": {"text": "For the Doctor Watsons of this world, as opposed to the Sherlock\n"},
+///     "line_number": 1,
+///     "absolute_offset": 0,
+///     "submatches": [
+///       {"match": {"text": "Watson"}, "replacement": {"text": "Moriarity"}, "start": 15, "end": 21}
+///     ]
+///   }
+/// }
+/// ```
+
 #[derive(Clone, Debug)]
 pub struct JSON<W> {
     config: Config,
@@ -471,11 +507,11 @@ impl<W: io::Write> JSON<W> {
     ) -> JSONSink<'static, 's, M, W> {
         JSONSink {
             matcher,
+            replacer: Replacer::new(),
             json: self,
             path: None,
             start_time: Instant::now(),
             match_count: 0,
-            after_context_remaining: 0,
             binary_byte_offset: None,
             begin_printed: false,
             stats: Stats::new(),
@@ -497,11 +533,11 @@ impl<W: io::Write> JSON<W> {
     {
         JSONSink {
             matcher,
+            replacer: Replacer::new(),
             json: self,
             path: Some(path.as_ref()),
             start_time: Instant::now(),
             match_count: 0,
-            after_context_remaining: 0,
             binary_byte_offset: None,
             begin_printed: false,
             stats: Stats::new(),
@@ -519,7 +555,7 @@ impl<W: io::Write> JSON<W> {
         } else {
             json::to_writer(&mut self.wtr, message)?;
         }
-        self.wtr.write(&[b'\n'])?;
+        let _ = self.wtr.write(b"\n")?; // This will always be Ok(1) when successful.
         Ok(())
     }
 }
@@ -559,11 +595,11 @@ impl<W> JSON<W> {
 #[derive(Debug)]
 pub struct JSONSink<'p, 's, M: Matcher, W> {
     matcher: M,
+    replacer: Replacer<M>,
     json: &'s mut JSON<W>,
     path: Option<&'p Path>,
     start_time: Instant,
     match_count: u64,
-    after_context_remaining: u64,
     binary_byte_offset: Option<u64>,
     begin_printed: bool,
     stats: Stats,
@@ -643,30 +679,29 @@ impl<'p, 's, M: Matcher, W: io::Write> JSONSink<'p, 's, M, W> {
         Ok(())
     }
 
-    /// Returns true if this printer should quit.
+    /// If the configuration specifies a replacement, then this executes the
+    /// replacement, lazily allocating memory if necessary.
     ///
-    /// This implements the logic for handling quitting after seeing a certain
-    /// amount of matches. In most cases, the logic is simple, but we must
-    /// permit all "after" contextual lines to print after reaching the limit.
-    fn should_quit(&self) -> bool {
-        let limit = match self.json.config.max_matches {
-            None => return false,
-            Some(limit) => limit,
-        };
-        if self.match_count < limit {
-            return false;
+    /// To access the result of a replacement, use `replacer.replacement()`.
+    fn replace(
+        &mut self,
+        searcher: &Searcher,
+        bytes: &[u8],
+        range: std::ops::Range<usize>,
+    ) -> io::Result<()> {
+        self.replacer.clear();
+        if self.json.config.replacement.is_some() {
+            let replacement =
+                (*self.json.config.replacement).as_ref().map(|r| &*r).unwrap();
+            self.replacer.replace_all(
+                searcher,
+                &self.matcher,
+                bytes,
+                range,
+                replacement,
+            )?;
         }
-        self.after_context_remaining == 0
-    }
-
-    /// Returns whether the current match count exceeds the configured limit.
-    /// If there is no limit, then this always returns false.
-    fn match_more_than_limit(&self) -> bool {
-        let limit = match self.json.config.max_matches {
-            None => return false,
-            Some(limit) => limit,
-        };
-        self.match_count > limit
+        Ok(())
     }
 
     /// Write the "begin" message.
@@ -689,32 +724,23 @@ impl<'p, 's, M: Matcher, W: io::Write> Sink for JSONSink<'p, 's, M, W> {
         searcher: &Searcher,
         mat: &SinkMatch<'_>,
     ) -> Result<bool, io::Error> {
-        self.write_begin_message()?;
-
         self.match_count += 1;
-        // When we've exceeded our match count, then the remaining context
-        // lines should not be reset, but instead, decremented. This avoids a
-        // bug where we display more matches than a configured limit. The main
-        // idea here is that 'matched' might be called again while printing
-        // an after-context line. In that case, we should treat this as a
-        // contextual line rather than a matching line for the purposes of
-        // termination.
-        if self.match_more_than_limit() {
-            self.after_context_remaining =
-                self.after_context_remaining.saturating_sub(1);
-        } else {
-            self.after_context_remaining = searcher.after_context() as u64;
-        }
+        self.write_begin_message()?;
 
         self.record_matches(
             searcher,
             mat.buffer(),
             mat.bytes_range_in_buffer(),
         )?;
+        self.replace(searcher, mat.buffer(), mat.bytes_range_in_buffer())?;
         self.stats.add_matches(self.json.matches.len() as u64);
         self.stats.add_matched_lines(mat.lines().count() as u64);
 
-        let submatches = SubMatches::new(mat.bytes(), &self.json.matches);
+        let submatches = SubMatches::new(
+            mat.bytes(),
+            &self.json.matches,
+            self.replacer.replacement(),
+        );
         let msg = jsont::Message::Match(jsont::Match {
             path: self.path,
             lines: mat.bytes(),
@@ -723,7 +749,7 @@ impl<'p, 's, M: Matcher, W: io::Write> Sink for JSONSink<'p, 's, M, W> {
             submatches: submatches.as_slice(),
         });
         self.json.write_message(&msg)?;
-        Ok(!self.should_quit())
+        Ok(true)
     }
 
     fn context(
@@ -734,13 +760,14 @@ impl<'p, 's, M: Matcher, W: io::Write> Sink for JSONSink<'p, 's, M, W> {
         self.write_begin_message()?;
         self.json.matches.clear();
 
-        if ctx.kind() == &SinkContextKind::After {
-            self.after_context_remaining =
-                self.after_context_remaining.saturating_sub(1);
-        }
         let submatches = if searcher.invert_match() {
             self.record_matches(searcher, ctx.bytes(), 0..ctx.bytes().len())?;
-            SubMatches::new(ctx.bytes(), &self.json.matches)
+            self.replace(searcher, ctx.bytes(), 0..ctx.bytes().len())?;
+            SubMatches::new(
+                ctx.bytes(),
+                &self.json.matches,
+                self.replacer.replacement(),
+            )
         } else {
             SubMatches::empty()
         };
@@ -752,7 +779,7 @@ impl<'p, 's, M: Matcher, W: io::Write> Sink for JSONSink<'p, 's, M, W> {
             submatches: submatches.as_slice(),
         });
         self.json.write_message(&msg)?;
-        Ok(!self.should_quit())
+        Ok(true)
     }
 
     fn binary_data(
@@ -776,11 +803,7 @@ impl<'p, 's, M: Matcher, W: io::Write> Sink for JSONSink<'p, 's, M, W> {
         self.json.wtr.reset_count();
         self.start_time = Instant::now();
         self.match_count = 0;
-        self.after_context_remaining = 0;
         self.binary_byte_offset = None;
-        if self.json.config.max_matches == Some(0) {
-            return Ok(false);
-        }
 
         if !self.json.config.always_begin_end {
             return Ok(true);
@@ -794,10 +817,6 @@ impl<'p, 's, M: Matcher, W: io::Write> Sink for JSONSink<'p, 's, M, W> {
         _searcher: &Searcher,
         finish: &SinkFinish,
     ) -> Result<(), io::Error> {
-        if !self.begin_printed {
-            return Ok(());
-        }
-
         self.binary_byte_offset = finish.binary_byte_offset();
         self.stats.add_elapsed(self.start_time.elapsed());
         self.stats.add_searches(1);
@@ -807,6 +826,9 @@ impl<'p, 's, M: Matcher, W: io::Write> Sink for JSONSink<'p, 's, M, W> {
         self.stats.add_bytes_searched(finish.byte_count());
         self.stats.add_bytes_printed(self.json.wtr.count());
 
+        if !self.begin_printed {
+            return Ok(());
+        }
         let msg = jsont::Message::End(jsont::End {
             path: self.path,
             binary_offset: finish.binary_byte_offset(),
@@ -831,19 +853,27 @@ enum SubMatches<'a> {
 impl<'a> SubMatches<'a> {
     /// Create a new set of match ranges from a set of matches and the
     /// corresponding bytes that those matches apply to.
-    fn new(bytes: &'a [u8], matches: &[Match]) -> SubMatches<'a> {
+    fn new(
+        bytes: &'a [u8],
+        matches: &[Match],
+        replacement: Option<(&'a [u8], &'a [Match])>,
+    ) -> SubMatches<'a> {
         if matches.len() == 1 {
             let mat = matches[0];
             SubMatches::Small([jsont::SubMatch {
                 m: &bytes[mat],
+                replacement: replacement
+                    .map(|(rbuf, rmatches)| &rbuf[rmatches[0]]),
                 start: mat.start(),
                 end: mat.end(),
             }])
         } else {
             let mut match_ranges = vec![];
-            for &mat in matches {
+            for (i, &mat) in matches.iter().enumerate() {
                 match_ranges.push(jsont::SubMatch {
                     m: &bytes[mat],
+                    replacement: replacement
+                        .map(|(rbuf, rmatches)| &rbuf[rmatches[i]]),
                     start: mat.start(),
                     end: mat.end(),
                 });
@@ -873,7 +903,7 @@ mod tests {
     use grep_regex::{RegexMatcher, RegexMatcherBuilder};
     use grep_searcher::SearcherBuilder;
 
-    use super::{JSONBuilder, JSON};
+    use super::{JSON, JSONBuilder};
 
     const SHERLOCK: &'static [u8] = b"\
 For the Doctor Watsons of this world, as opposed to the Sherlock
@@ -919,9 +949,9 @@ and exhibited clearly, with a label attached.\
     #[test]
     fn max_matches() {
         let matcher = RegexMatcher::new(r"Watson").unwrap();
-        let mut printer =
-            JSONBuilder::new().max_matches(Some(1)).build(vec![]);
+        let mut printer = JSONBuilder::new().build(vec![]);
         SearcherBuilder::new()
+            .max_matches(Some(1))
             .build()
             .search_reader(&matcher, SHERLOCK, printer.sink(&matcher))
             .unwrap();
@@ -946,10 +976,10 @@ d
 e
 ";
         let matcher = RegexMatcher::new(r"d").unwrap();
-        let mut printer =
-            JSONBuilder::new().max_matches(Some(1)).build(vec![]);
+        let mut printer = JSONBuilder::new().build(vec![]);
         SearcherBuilder::new()
             .after_context(2)
+            .max_matches(Some(1))
             .build()
             .search_reader(
                 &matcher,

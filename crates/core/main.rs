@@ -37,7 +37,7 @@ mod search;
 // i686.
 #[cfg(all(target_env = "musl", target_pointer_width = "64"))]
 #[global_allocator]
-static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 /// Then, as it was, then again it will be.
 fn main() -> ExitCode {
@@ -702,7 +702,7 @@ fn print_stats<W: Write>(
 {bytes_printed} bytes printed
 {bytes_searched} bytes searched
 {search_time:0.6} seconds spent searching
-{process_time:0.6} seconds
+{process_time:0.6} seconds total
 ",
             matches = stats.matches(),
             lines = stats.matched_lines(),
