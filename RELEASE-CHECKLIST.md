@@ -7,6 +7,7 @@
   a strong motivation otherwise, review and update every dependency. Also
   run `--aggressive`, but don't update to crates that are still in beta.
 * Update date in `crates/core/flags/doc/template.rg.1`.
+* Update the CHANGELOG as appropriate.
 * Review changes for every crate in `crates` since the last ripgrep release.
   If the set of changes is non-empty, issue a new release for that crate. Check
   crates in the following order. After updating a crate, ensure minimal
@@ -22,7 +23,6 @@
     * crates/printer
     * crates/grep (bump minimal versions as necessary)
     * crates/core (do **not** bump version, but update dependencies as needed)
-* Update the CHANGELOG as appropriate.
 * Edit the `Cargo.toml` to set the new ripgrep version. Run
   `cargo update -p ripgrep` so that the `Cargo.lock` is updated. Commit the
   changes and create a new signed tag. Alternatively, use
@@ -41,8 +41,6 @@
   > tool that recursively searches the current directory for a regex pattern.
   > By default, ripgrep will respect gitignore rules and automatically skip
   > hidden files/directories and binary files.
-* Run `git checkout {VERSION} && ci/build-and-publish-m2 {VERSION}` on a macOS
-  system with Apple silicon.
 * Run `cargo publish`.
 * Run `ci/sha256-releases {VERSION} >> pkg/brew/ripgrep-bin.rb`. Then edit
   `pkg/brew/ripgrep-bin.rb` to update the version number and sha256 hashes.

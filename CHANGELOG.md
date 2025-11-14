@@ -1,6 +1,125 @@
-TBD
-===
-Unreleased changes. Release notes have not yet been written.
+15.1.0
+======
+This is a small release that fixes a bug with how ripgrep handles line
+buffering. This might manifest as ripgrep printing output later than you
+expect or not working correctly with `tail -f` (even if you're using the
+`--line-buffered` flag).
+
+Bug fixes:
+
+* [BUG #3194](https://github.com/BurntSushi/ripgrep/issues/3194):
+  Fix a regression with `--line-buffered` introduced in ripgrep 15.0.0.
+
+Feature enhancements:
+
+* [FEATURE #3192](https://github.com/BurntSushi/ripgrep/pull/3192):
+  Add hyperlink alias for Cursor.
+
+
+15.0.0 (2025-10-15)
+===================
+ripgrep 15 is a new major version release of ripgrep that mostly has bug fixes,
+some minor performance improvements and minor new features. Here are some
+highlights:
+
+* Several bugs around gitignore matching have been fixed. This includes
+  a commonly reported bug related to applying gitignore rules from parent
+  directories.
+* A memory usage regression when handling very large gitignore files has been
+  fixed.
+* `rg -vf file`, where `file` is empty, now matches everything.
+* The `-r/--replace` flag now works with `--json`.
+* A subset of Jujutsu (`jj`) repositories are now treated as if they were git
+  repositories. That is, ripgrep will respect `jj`'s gitignores.
+* Globs can now use nested curly braces.
+
+Platform support:
+
+* `aarch64` for Windows now has release artifacts.
+* `powerpc64` no longer has release artifacts generated for it. The CI
+  release workflow stopped working, and I didn't deem it worth my time to
+  debug it. If someone wants this and can test it, I'd be happy to add it
+  back.
+* ripgrep binaries are now compiled with full LTO enabled. You may notice
+  small performance improvements from this and a modest decrease in binary
+  size.
+
+Performance improvements:
+
+* [PERF #2111](https://github.com/BurntSushi/ripgrep/issues/2111):
+  Don't resolve helper binaries on Windows when `-z/--search-zip` isn't used.
+* [PERF #2865](https://github.com/BurntSushi/ripgrep/pull/2865):
+  Avoid using path canonicalization on Windows when emitting hyperlinks.
+
+Bug fixes:
+
+* [BUG #829](https://github.com/BurntSushi/ripgrep/issues/829),
+  [BUG #2731](https://github.com/BurntSushi/ripgrep/issues/2731),
+  [BUG #2747](https://github.com/BurntSushi/ripgrep/issues/2747),
+  [BUG #2770](https://github.com/BurntSushi/ripgrep/issues/2770),
+  [BUG #2778](https://github.com/BurntSushi/ripgrep/issues/2778),
+  [BUG #2836](https://github.com/BurntSushi/ripgrep/issues/2836),
+  [BUG #2933](https://github.com/BurntSushi/ripgrep/pull/2933),
+  [BUG #3067](https://github.com/BurntSushi/ripgrep/pull/3067):
+  Fix bug related to gitignores from parent directories.
+* [BUG #1332](https://github.com/BurntSushi/ripgrep/issues/1332),
+  [BUG #3001](https://github.com/BurntSushi/ripgrep/issues/3001):
+  Make `rg -vf file` where `file` is empty match everything.
+* [BUG #2177](https://github.com/BurntSushi/ripgrep/issues/2177):
+  Ignore a UTF-8 BOM marker at the start of `.gitignore` (and similar files).
+* [BUG #2750](https://github.com/BurntSushi/ripgrep/issues/2750):
+  Fix memory usage regression for some truly large gitignore files.
+* [BUG #2944](https://github.com/BurntSushi/ripgrep/pull/2944):
+  Fix a bug where the "bytes searched" in `--stats` output could be incorrect.
+* [BUG #2990](https://github.com/BurntSushi/ripgrep/issues/2990):
+  Fix a bug where ripgrep would mishandle globs that ended with a `.`.
+* [BUG #2094](https://github.com/BurntSushi/ripgrep/issues/2094),
+  [BUG #3076](https://github.com/BurntSushi/ripgrep/issues/3076):
+  Fix bug with `-m/--max-count` and `-U/--multiline` showing too many matches.
+* [BUG #3100](https://github.com/BurntSushi/ripgrep/pull/3100):
+  Preserve line terminators when using `-r/--replace` flag.
+* [BUG #3108](https://github.com/BurntSushi/ripgrep/issues/3108):
+  Fix a bug where `-q --files-without-match` inverted the exit code.
+* [BUG #3131](https://github.com/BurntSushi/ripgrep/issues/3131):
+  Document inconsistency between `-c/--count` and `--files-with-matches`.
+* [BUG #3135](https://github.com/BurntSushi/ripgrep/issues/3135):
+  Fix rare panic for some classes of large regexes on large haystacks.
+* [BUG #3140](https://github.com/BurntSushi/ripgrep/issues/3140):
+  Ensure hyphens in flag names are escaped in the roff text for the man page.
+* [BUG #3155](https://github.com/BurntSushi/ripgrep/issues/3155):
+  Statically compile PCRE2 into macOS release artifacts on `aarch64`.
+* [BUG #3173](https://github.com/BurntSushi/ripgrep/issues/3173):
+  Fix ancestor ignore filter bug when searching whitelisted hidden files.
+* [BUG #3178](https://github.com/BurntSushi/ripgrep/discussions/3178):
+  Fix bug causing incorrect summary statistics with `--json` flag.
+* [BUG #3179](https://github.com/BurntSushi/ripgrep/issues/3179):
+  Fix gitignore bug when searching absolute paths with global gitignores.
+* [BUG #3180](https://github.com/BurntSushi/ripgrep/issues/3180):
+  Fix a panicking bug when using `-U/--multiline` and `-r/--replace`.
+
+Feature enhancements:
+
+* Many enhancements to the default set of file types available for filtering.
+* [FEATURE #1872](https://github.com/BurntSushi/ripgrep/issues/1872):
+  Make `-r/--replace` work with `--json`.
+* [FEATURE #2708](https://github.com/BurntSushi/ripgrep/pull/2708):
+  Completions for the fish shell take ripgrep's config file into account.
+* [FEATURE #2841](https://github.com/BurntSushi/ripgrep/pull/2841):
+  Add `italic` to the list of available style attributes in `--color`.
+* [FEATURE #2842](https://github.com/BurntSushi/ripgrep/pull/2842):
+  Directories containing `.jj` are now treated as git repositories.
+* [FEATURE #2849](https://github.com/BurntSushi/ripgrep/pull/2849):
+  When using multithreading, schedule files to search in order given on CLI.
+* [FEATURE #2943](https://github.com/BurntSushi/ripgrep/issues/2943):
+  Add `aarch64` release artifacts for Windows.
+* [FEATURE #3024](https://github.com/BurntSushi/ripgrep/issues/3024):
+  Add `highlight` color type, for styling non-matching text in a matching line.
+* [FEATURE #3048](https://github.com/BurntSushi/ripgrep/pull/3048):
+  Globs in ripgrep (and the `globset` crate) now support nested alternates.
+* [FEATURE #3096](https://github.com/BurntSushi/ripgrep/pull/3096):
+  Improve completions for `--hyperlink-format` in bash and fish.
+* [FEATURE #3102](https://github.com/BurntSushi/ripgrep/pull/3102):
+  Improve completions for `--hyperlink-format` in zsh.
 
 
 14.1.1 (2024-09-08)

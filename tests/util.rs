@@ -68,14 +68,14 @@ impl Dir {
     /// does not need to be distinct for each invocation, but should correspond
     /// to a logical grouping of tests.
     pub fn new(name: &str) -> Dir {
-        let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
+        let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
         let root = env::current_exe()
             .unwrap()
             .parent()
             .expect("executable's directory")
             .to_path_buf();
         let dir =
-            env::temp_dir().join(TEST_DIR).join(name).join(&format!("{}", id));
+            env::temp_dir().join(TEST_DIR).join(name).join(&format!("{id}"));
         if dir.exists() {
             nice_err(&dir, fs::remove_dir_all(&dir));
         }
@@ -273,11 +273,14 @@ impl TestCommand {
 
     /// Set the working directory for this command.
     ///
+    /// The path given is interpreted relative to the directory that this
+    /// command was created for.
+    ///
     /// Note that this does not need to be called normally, since the creation
     /// of this TestCommand causes its working directory to be set to the
     /// test's directory automatically.
     pub fn current_dir<P: AsRef<Path>>(&mut self, dir: P) -> &mut TestCommand {
-        self.cmd.current_dir(dir);
+        self.cmd.current_dir(self.dir.path().join(dir));
         self
     }
 

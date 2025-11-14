@@ -17,18 +17,18 @@ ripgrep. For example, `-E`, `--encoding` and `--no-encoding` all manipulate the
 same encoding state in ripgrep.
 */
 
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::LazyLock};
 
 use {anyhow::Context as AnyhowContext, bstr::ByteVec};
 
 use crate::flags::{
+    Category, Flag, FlagValue,
     lowargs::{
         BinaryMode, BoundaryMode, BufferMode, CaseMode, ColorChoice,
         ContextMode, EncodingMode, EngineChoice, GenerateMode, LoggingMode,
         LowArgs, MmapMode, Mode, PatternSource, SearchMode, SortMode,
         SortModeKind, SpecialMode, TypeChange,
     },
-    Category, Flag, FlagValue,
 };
 
 #[cfg(test)]
@@ -752,7 +752,8 @@ the \flag{colors} flag to manually set all color styles to \fBnone\fP:
     \-\-colors 'path:none' \\
     \-\-colors 'line:none' \\
     \-\-colors 'column:none' \\
-    \-\-colors 'match:none'
+    \-\-colors 'match:none' \\
+    \-\-colors 'highlight:none'
 .EE
 .sp
 "
@@ -830,21 +831,21 @@ impl Flag for Colors {
         "Configure color settings and styles."
     }
     fn doc_long(&self) -> &'static str {
-        r"
+        r#"
 This flag specifies color settings for use in the output. This flag may be
 provided multiple times. Settings are applied iteratively. Pre-existing color
 labels are limited to one of eight choices: \fBred\fP, \fBblue\fP, \fBgreen\fP,
 \fBcyan\fP, \fBmagenta\fP, \fByellow\fP, \fBwhite\fP and \fBblack\fP. Styles
 are limited to \fBnobold\fP, \fBbold\fP, \fBnointense\fP, \fBintense\fP,
-\fBnounderline\fP or \fBunderline\fP.
+\fBnounderline\fP, \fBunderline\fP, \fBnoitalic\fP or \fBitalic\fP.
 .sp
 The format of the flag is
 \fB{\fP\fItype\fP\fB}:{\fP\fIattribute\fP\fB}:{\fP\fIvalue\fP\fB}\fP.
-\fItype\fP should be one of \fBpath\fP, \fBline\fP, \fBcolumn\fP or
-\fBmatch\fP. \fIattribute\fP can be \fBfg\fP, \fBbg\fP or \fBstyle\fP.
-\fIvalue\fP is either a color (for \fBfg\fP and \fBbg\fP) or a text style. A
-special format, \fB{\fP\fItype\fP\fB}:none\fP, will clear all color settings
-for \fItype\fP.
+\fItype\fP should be one of \fBpath\fP, \fBline\fP, \fBcolumn\fP,
+\fBhighlight\fP or \fBmatch\fP. \fIattribute\fP can be \fBfg\fP, \fBbg\fP or
+\fBstyle\fP. \fIvalue\fP is either a color (for \fBfg\fP and \fBbg\fP) or a
+text style. A special format, \fB{\fP\fItype\fP\fB}:none\fP, will clear all
+color settings for \fItype\fP.
 .sp
 For example, the following command will change the match color to magenta and
 the background color for line numbers to yellow:
@@ -852,6 +853,17 @@ the background color for line numbers to yellow:
 .EX
     rg \-\-colors 'match:fg:magenta' \-\-colors 'line:bg:yellow'
 .EE
+.sp
+Another example, the following command will "highlight" the non-matching text
+in matching lines:
+.sp
+.EX
+    rg \-\-colors 'highlight:bg:yellow' \-\-colors 'highlight:fg:black'
+.EE
+.sp
+The "highlight" color type is particularly useful for contrasting matching
+lines with surrounding context printed by the \flag{before-context},
+\flag{after-context}, \flag{context} or \flag{passthru} flags.
 .sp
 Extended colors can be used for \fIvalue\fP when the tty supports ANSI color
 sequences. These are specified as either \fIx\fP (256-color) or
@@ -875,7 +887,7 @@ or, equivalently,
 .sp
 Note that the \fBintense\fP and \fBnointense\fP styles will have no effect when
 used alongside these extended color codes.
-"
+"#
     }
 
     fn update(&self, v: FlagValue, args: &mut LowArgs) -> anyhow::Result<()> {
@@ -907,6 +919,24 @@ fn test_colors() {
         vec![
             "match:fg:magenta".parse().unwrap(),
             "line:bg:yellow".parse().unwrap()
+        ]
+    );
+
+    let args = parse_low_raw(["--colors", "highlight:bg:240"]).unwrap();
+    assert_eq!(args.colors, vec!["highlight:bg:240".parse().unwrap()]);
+
+    let args = parse_low_raw([
+        "--colors",
+        "match:fg:magenta",
+        "--colors",
+        "highlight:bg:blue",
+    ])
+    .unwrap();
+    assert_eq!(
+        args.colors,
+        vec![
+            "match:fg:magenta".parse().unwrap(),
+            "highlight:bg:blue".parse().unwrap()
         ]
     );
 }
@@ -1235,17 +1265,26 @@ impl Flag for Count {
     }
     fn doc_long(&self) -> &'static str {
         r"
-This flag suppresses normal output and shows the number of lines that match the
-given patterns for each file searched. Each file containing a match has its
-path and count printed on each line. Note that unless \flag{multiline}
-is enabled, this reports the number of lines that match and not the total
-number of matches. In multiline mode, \flag{count} is equivalent to
-\flag{count-matches}.
+This flag suppresses normal output and shows the number of lines that match
+the given patterns for each file searched. Each file containing a match has
+its path and count printed on each line. Note that unless \flag{multiline} is
+enabled and the pattern(s) given can match over multiple lines, this reports
+the number of lines that match and not the total number of matches. When
+multiline mode is enabled and the pattern(s) given can match over multiple
+lines, \flag{count} is equivalent to \flag{count-matches}.
 .sp
 If only one file is given to ripgrep, then only the count is printed if there
 is a match. The \flag{with-filename} flag can be used to force printing the
 file path in this case. If you need a count to be printed regardless of whether
 there is a match, then use \flag{include-zero}.
+.sp
+Note that it is possible for this flag to have results inconsistent with
+the output of \flag{files-with-matches}. Notably, by default, ripgrep tries
+to avoid searching files with binary data. With this flag, ripgrep needs to
+search the entire content of files, which may include binary data. But with
+\flag{files-with-matches}, ripgrep can stop as soon as a match is observed,
+which may come well before any binary data. To avoid this inconsistency without
+disabling binary detection, use the \flag{binary} flag.
 .sp
 This overrides the \flag{count-matches} flag. Note that when \flag{count}
 is combined with \flag{only-matching}, then ripgrep behaves as if
@@ -2155,6 +2194,14 @@ impl Flag for FilesWithMatches {
         r"
 Print only the paths with at least one match and suppress match contents.
 .sp
+Note that it is possible for this flag to have results inconsistent with the
+output of \flag{count}. Notably, by default, ripgrep tries to avoid searching
+files with binary data. With this flag, ripgrep might stop searching before
+the binary data is observed. But with \flag{count}, ripgrep has to search the
+entire contents to determine the match count, which means it might see binary
+data that causes it to skip searching that file. To avoid this inconsistency
+without disabling binary detection, use the \flag{binary} flag.
+.sp
 This overrides \flag{files-without-match}.
 "
     }
@@ -2753,6 +2800,11 @@ ripgrep.
 A file or directory is considered hidden if its base name starts with a dot
 character (\fB.\fP). On operating systems which support a "hidden" file
 attribute, like Windows, files with this attribute are also considered hidden.
+.sp
+Note that \flag{hidden} will include files and folders like \fB.git\fP
+regardless of \flag{no-ignore-vcs}. To exclude such paths when using
+\flag{hidden}, you must explicitly ignore them using another flag or ignore
+file.
 "#
     }
 
@@ -2863,7 +2915,10 @@ impl Flag for HyperlinkFormat {
         r"Set the format of hyperlinks."
     }
     fn doc_long(&self) -> &'static str {
-        r#"
+        static DOC: LazyLock<String> = LazyLock::new(|| {
+            let mut doc = String::new();
+            doc.push_str(
+                r#"
 Set the format of hyperlinks to use when printing results. Hyperlinks make
 certain elements of ripgrep's output, such as file paths, clickable. This
 generally only works in terminal emulators that support OSC-8 hyperlinks. For
@@ -2871,10 +2926,23 @@ example, the format \fBfile://{host}{path}\fP will emit an RFC 8089 hyperlink.
 To see the format that ripgrep is using, pass the \flag{debug} flag.
 .sp
 Alternatively, a format string may correspond to one of the following aliases:
-\fBdefault\fP, \fBnone\fP, \fBfile\fP, \fBgrep+\fP, \fBkitty\fP, \fBmacvim\fP,
-\fBtextmate\fP, \fBvscode\fP, \fBvscode-insiders\fP, \fBvscodium\fP. The
-alias will be replaced with a format string that is intended to work for the
-corresponding application.
+"#,
+            );
+
+            let mut aliases = grep::printer::hyperlink_aliases();
+            aliases.sort_by_key(|alias| {
+                alias.display_priority().unwrap_or(i16::MAX)
+            });
+            for (i, alias) in aliases.iter().enumerate() {
+                doc.push_str(r"\fB");
+                doc.push_str(alias.name());
+                doc.push_str(r"\fP");
+                doc.push_str(if i < aliases.len() - 1 { ", " } else { "." });
+            }
+            doc.push_str(
+                r#"
+The alias will be replaced with a format string that is intended to work for
+the corresponding application.
 .sp
 The following variables are available in the format string:
 .sp
@@ -2951,7 +3019,24 @@ in the output. To make the path appear, and thus also a hyperlink, use the
 .sp
 For more information on hyperlinks in terminal emulators, see:
 https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda
-"#
+"#,
+            );
+            doc
+        });
+        &DOC
+    }
+
+    fn doc_choices(&self) -> &'static [&'static str] {
+        static CHOICES: LazyLock<Vec<String>> = LazyLock::new(|| {
+            let mut aliases = grep::printer::hyperlink_aliases();
+            aliases.sort_by_key(|alias| {
+                alias.display_priority().unwrap_or(i16::MAX)
+            });
+            aliases.iter().map(|alias| alias.name().to_string()).collect()
+        });
+        static BORROWED: LazyLock<Vec<&'static str>> =
+            LazyLock::new(|| CHOICES.iter().map(|name| &**name).collect());
+        &*BORROWED
     }
 
     fn update(&self, v: FlagValue, args: &mut LowArgs) -> anyhow::Result<()> {
@@ -3145,9 +3230,11 @@ impl Flag for IgnoreFile {
 Specifies a path to one or more \fBgitignore\fP formatted rules files.
 These patterns are applied after the patterns found in \fB.gitignore\fP,
 \fB.rgignore\fP and \fB.ignore\fP are applied and are matched relative to the
-current working directory. Multiple additional ignore files can be specified
-by using this flag repeatedly. When specifying multiple ignore files, earlier
-files have lower precedence than later files.
+current working directory. That is, files specified via this flag have lower
+precedence than files automatically found in the directory tree. Multiple
+additional ignore files can be specified by using this flag repeatedly. When
+specifying multiple ignore files, earlier files have lower precedence than
+later files.
 .sp
 If you are looking for a way to include or exclude files and directories
 directly on the command line, then use \flag{glob} instead.
@@ -3849,6 +3936,14 @@ impl Flag for MaxCount {
     fn doc_long(&self) -> &'static str {
         r"
 Limit the number of matching lines per file searched to \fINUM\fP.
+.sp
+When \flag{multiline} is used, a single match that spans multiple lines is only
+counted once for the purposes of this limit. Multiple matches in a single line
+are counted only once, as they would be in non-multiline mode.
+.sp
+When combined with \flag{after-context} or \flag{context}, it's possible for
+more matches than the maximum to be printed if contextual lines contain a
+match.
 .sp
 Note that \fB0\fP is a legal value but not likely to be useful. When used,
 ripgrep won't search anything.
@@ -4644,11 +4739,15 @@ impl Flag for NoIgnoreVcs {
     }
     fn doc_long(&self) -> &'static str {
         r"
-When given, filter rules from source control ignore files (e.g., \fB.gitignore\fP)
-are not respected. By default, ripgrep respects \fBgit\fP's ignore rules for
-automatic filtering. In some cases, it may not be desirable to respect the
-source control's ignore rules and instead only respect rules in \fB.ignore\fP
-or \fB.rgignore\fP.
+When given, filter rules from source control ignore files (e.g.,
+\fB.gitignore\fP) are not respected. By default, ripgrep respects \fBgit\fP's
+ignore rules for automatic filtering. In some cases, it may not be desirable
+to respect the source control's ignore rules and instead only respect rules in
+\fB.ignore\fP or \fB.rgignore\fP.
+.sp
+Note that this flag does not directly affect the filtering of source control
+files or folders that start with a dot (\fB.\fP), like \fB.git\fP. These are
+affected by \flag{hidden} and its related flags instead.
 .sp
 This flag implies \flag{no-ignore-parent} for source control ignore files as
 well.
@@ -5545,9 +5644,9 @@ don't need preprocessing. For example, given the following shell script,
     pdftotext "$1" -
 .EE
 .sp
-then it is possible to use \fB\-\-pre\fP \fIpre-pdftotext\fP \fB--pre-glob
-'\fP\fI*.pdf\fP\fB'\fP to make it so ripgrep only executes the
-\fIpre-pdftotext\fP command on files with a \fI.pdf\fP extension.
+then it is possible to use \fB\-\-pre\fP \fIpre-pdftotext\fP
+\fB\-\-pre\-glob\fP '\fI*.pdf\fP' to make it so ripgrep only executes
+the \fIpre-pdftotext\fP command on files with a \fI.pdf\fP extension.
 .sp
 Multiple \flag{pre-glob} flags may be used. Globbing rules match
 \fBgitignore\fP globs. Precede a glob with a \fB!\fP to exclude it.
@@ -7709,9 +7808,10 @@ mod tests {
                 assert!(
                     choice.chars().all(|c| c.is_ascii_alphanumeric()
                         || c == '-'
-                        || c == ':'),
+                        || c == ':'
+                        || c == '+'),
                     "choice '{choice}' for flag '{long}' does not match \
-                     ^[-:0-9A-Za-z]+$",
+                     ^[-+:0-9A-Za-z]+$",
                 )
             }
         }

@@ -51,13 +51,13 @@ impl std::fmt::Display for ColorError {
             ColorError::UnrecognizedOutType(ref name) => write!(
                 f,
                 "unrecognized output type '{}'. Choose from: \
-                 path, line, column, match.",
+                 path, line, column, match, highlight.",
                 name,
             ),
             ColorError::UnrecognizedSpecType(ref name) => write!(
                 f,
                 "unrecognized spec type '{}'. Choose from: \
-                fg, bg, style, none.",
+                 fg, bg, style, none.",
                 name,
             ),
             ColorError::UnrecognizedColor(_, ref msg) => write!(f, "{}", msg),
@@ -65,13 +65,13 @@ impl std::fmt::Display for ColorError {
                 f,
                 "unrecognized style attribute '{}'. Choose from: \
                  nobold, bold, nointense, intense, nounderline, \
-                 underline.",
+                 underline, noitalic, italic.",
                 name,
             ),
             ColorError::InvalidFormat(ref original) => write!(
                 f,
-                "invalid color spec format: '{}'. Valid format \
-                 is '(path|line|column|match):(fg|bg|style):(value)'.",
+                "invalid color spec format: '{}'. Valid format is \
+                 '(path|line|column|match|highlight):(fg|bg|style):(value)'.",
                 original,
             ),
         }
@@ -90,6 +90,7 @@ pub struct ColorSpecs {
     line: ColorSpec,
     column: ColorSpec,
     matched: ColorSpec,
+    highlight: ColorSpec,
 }
 
 /// A single color specification provided by the user.
@@ -99,7 +100,7 @@ pub struct ColorSpecs {
 /// The format of a `Spec` is a triple: `{type}:{attribute}:{value}`. Each
 /// component is defined as follows:
 ///
-/// * `{type}` can be one of `path`, `line`, `column` or `match`.
+/// * `{type}` can be one of `path`, `line`, `column`, `match` or `highlight`.
 /// * `{attribute}` can be one of `fg`, `bg` or `style`. `{attribute}` may also
 ///   be the special value `none`, in which case, `{value}` can be omitted.
 /// * `{value}` is either a color name (for `fg`/`bg`) or a style instruction.
@@ -121,7 +122,7 @@ pub struct ColorSpecs {
 /// `0x`.
 ///
 /// Valid style instructions are `nobold`, `bold`, `intense`, `nointense`,
-/// `underline`, `nounderline`.
+/// `underline`, `nounderline`, `italic`, `noitalic`.
 ///
 /// ## Example
 ///
@@ -181,6 +182,7 @@ enum OutType {
     Line,
     Column,
     Match,
+    Highlight,
 }
 
 /// The specification type.
@@ -201,6 +203,8 @@ enum Style {
     NoIntense,
     Underline,
     NoUnderline,
+    Italic,
+    NoItalic,
 }
 
 impl ColorSpecs {
@@ -214,6 +218,7 @@ impl ColorSpecs {
                 OutType::Line => spec.merge_into(&mut merged.line),
                 OutType::Column => spec.merge_into(&mut merged.column),
                 OutType::Match => spec.merge_into(&mut merged.matched),
+                OutType::Highlight => spec.merge_into(&mut merged.highlight),
             }
         }
         merged
@@ -246,6 +251,12 @@ impl ColorSpecs {
     /// Return the color specification for coloring matched text.
     pub fn matched(&self) -> &ColorSpec {
         &self.matched
+    }
+
+    /// Return the color specification for coloring entire line if there is a
+    /// matched text.
+    pub fn highlight(&self) -> &ColorSpec {
+        &self.highlight
     }
 }
 
@@ -285,6 +296,12 @@ impl SpecValue {
                 }
                 Style::NoUnderline => {
                     cspec.set_underline(false);
+                }
+                Style::Italic => {
+                    cspec.set_italic(true);
+                }
+                Style::NoItalic => {
+                    cspec.set_italic(false);
                 }
             },
         }
@@ -340,6 +357,7 @@ impl std::str::FromStr for OutType {
             "line" => Ok(OutType::Line),
             "column" => Ok(OutType::Column),
             "match" => Ok(OutType::Match),
+            "highlight" => Ok(OutType::Highlight),
             _ => Err(ColorError::UnrecognizedOutType(s.to_string())),
         }
     }
@@ -370,6 +388,8 @@ impl std::str::FromStr for Style {
             "nointense" => Ok(Style::NoIntense),
             "underline" => Ok(Style::Underline),
             "nounderline" => Ok(Style::NoUnderline),
+            "italic" => Ok(Style::Italic),
+            "noitalic" => Ok(Style::NoItalic),
             _ => Err(ColorError::UnrecognizedStyle(s.to_string())),
         }
     }

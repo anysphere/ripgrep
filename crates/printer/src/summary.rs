@@ -17,7 +17,7 @@ use crate::{
     counter::CounterWriter,
     hyperlink::{self, HyperlinkConfig},
     stats::Stats,
-    util::{find_iter_at_in_context, PrinterPath},
+    util::{PrinterPath, find_iter_at_in_context},
 };
 
 /// The configuration for the summary printer.
@@ -32,7 +32,6 @@ struct Config {
     hyperlink: HyperlinkConfig,
     stats: bool,
     path: bool,
-    max_matches: Option<u64>,
     exclude_zero: bool,
     separator_field: Arc<Vec<u8>>,
     separator_path: Option<u8>,
@@ -47,7 +46,6 @@ impl Default for Config {
             hyperlink: HyperlinkConfig::default(),
             stats: false,
             path: true,
-            max_matches: None,
             exclude_zero: true,
             separator_field: Arc::new(b":".to_vec()),
             separator_path: None,
@@ -87,7 +85,13 @@ pub enum SummaryKind {
     ///
     /// Note that if `stats` is enabled, then searching continues in order to
     /// compute statistics.
-    Quiet,
+    QuietWithMatch,
+    /// Don't show any output and the stop the search once a non-matching file
+    /// is found.
+    ///
+    /// Note that if `stats` is enabled, then searching continues in order to
+    /// compute statistics.
+    QuietWithoutMatch,
 }
 
 impl SummaryKind {
@@ -101,7 +105,7 @@ impl SummaryKind {
 
         match *self {
             PathWithMatch | PathWithoutMatch => true,
-            Count | CountMatches | Quiet => false,
+            Count | CountMatches | QuietWithMatch | QuietWithoutMatch => false,
         }
     }
 
@@ -112,7 +116,8 @@ impl SummaryKind {
 
         match *self {
             CountMatches => true,
-            Count | PathWithMatch | PathWithoutMatch | Quiet => false,
+            Count | PathWithMatch | PathWithoutMatch | QuietWithMatch
+            | QuietWithoutMatch => false,
         }
     }
 
@@ -122,8 +127,10 @@ impl SummaryKind {
         use self::SummaryKind::*;
 
         match *self {
-            PathWithMatch | Quiet => true,
-            Count | CountMatches | PathWithoutMatch => false,
+            PathWithMatch | QuietWithMatch => true,
+            Count | CountMatches | PathWithoutMatch | QuietWithoutMatch => {
+                false
+            }
         }
     }
 }
@@ -246,9 +253,9 @@ impl SummaryBuilder {
     ///
     /// When this is enabled, this printer may need to do extra work in order
     /// to compute certain statistics, which could cause the search to take
-    /// longer. For example, in `Quiet` mode, a search can quit after finding
-    /// the first match, but if `stats` is enabled, then the search will
-    /// continue after the first match in order to compute statistics.
+    /// longer. For example, in `QuietWithMatch` mode, a search can quit after
+    /// finding the first match, but if `stats` is enabled, then the search
+    /// will continue after the first match in order to compute statistics.
     ///
     /// For a complete description of available statistics, see [`Stats`].
     ///
@@ -270,18 +277,6 @@ impl SummaryBuilder {
     /// This is enabled by default.
     pub fn path(&mut self, yes: bool) -> &mut SummaryBuilder {
         self.config.path = yes;
-        self
-    }
-
-    /// Set the maximum amount of matches that are printed.
-    ///
-    /// If multi line search is enabled and a match spans multiple lines, then
-    /// that match is counted exactly once for the purposes of enforcing this
-    /// limit, regardless of how many lines it spans.
-    ///
-    /// This is disabled by default.
-    pub fn max_matches(&mut self, limit: Option<u64>) -> &mut SummaryBuilder {
-        self.config.max_matches = limit;
         self
     }
 
@@ -505,7 +500,9 @@ impl<'p, 's, M: Matcher, W: WriteColor> SummarySink<'p, 's, M, W> {
     /// search.
     pub fn has_match(&self) -> bool {
         match self.summary.config.kind {
-            SummaryKind::PathWithoutMatch => self.match_count == 0,
+            SummaryKind::PathWithoutMatch | SummaryKind::QuietWithoutMatch => {
+                self.match_count == 0
+            }
             _ => self.match_count > 0,
         }
     }
@@ -542,19 +539,6 @@ impl<'p, 's, M: Matcher, W: WriteColor> SummarySink<'p, 's, M, W> {
     /// searcher has multi line mode enabled.
     fn multi_line(&self, searcher: &Searcher) -> bool {
         searcher.multi_line_with_matcher(&self.matcher)
-    }
-
-    /// Returns true if this printer should quit.
-    ///
-    /// This implements the logic for handling quitting after seeing a certain
-    /// amount of matches. In most cases, the logic is simple, but we must
-    /// permit all "after" contextual lines to print after reaching the limit.
-    fn should_quit(&self) -> bool {
-        let limit = match self.summary.config.max_matches {
-            None => return false,
-            Some(limit) => limit,
-        };
-        self.match_count >= limit
     }
 
     /// If this printer has a file path associated with it, then this will
@@ -672,7 +656,11 @@ impl<'p, 's, M: Matcher, W: WriteColor> Sink for SummarySink<'p, 's, M, W> {
                     true
                 },
             )?;
-            count
+            // Because of `find_iter_at_in_context` being a giant
+            // kludge internally, it's possible that it won't find
+            // *any* matches even though we clearly know that there is
+            // at least one. So make sure we record at least one here.
+            count.max(1)
         };
         if is_multi_line {
             self.match_count += sink_match_count;
@@ -685,7 +673,7 @@ impl<'p, 's, M: Matcher, W: WriteColor> Sink for SummarySink<'p, 's, M, W> {
         } else if self.summary.config.kind.quit_early() {
             return Ok(false);
         }
-        Ok(!self.should_quit())
+        Ok(true)
     }
 
     fn binary_data(
@@ -716,10 +704,6 @@ impl<'p, 's, M: Matcher, W: WriteColor> Sink for SummarySink<'p, 's, M, W> {
         self.start_time = Instant::now();
         self.match_count = 0;
         self.binary_byte_offset = None;
-        if self.summary.config.max_matches == Some(0) {
-            return Ok(false);
-        }
-
         Ok(true)
     }
 
@@ -749,14 +733,14 @@ impl<'p, 's, M: Matcher, W: WriteColor> Sink for SummarySink<'p, 's, M, W> {
         // don't quit and therefore search the entire contents of the file.
         //
         // There is an unfortunate inconsistency here. Namely, when using
-        // Quiet or PathWithMatch, then the printer can quit after the first
-        // match seen, which could be long before seeing binary data. This
-        // means that using PathWithMatch can print a path where as using
+        // QuietWithMatch or PathWithMatch, then the printer can quit after the
+        // first match seen, which could be long before seeing binary data.
+        // This means that using PathWithMatch can print a path where as using
         // Count might not print it at all because of binary data.
         //
         // It's not possible to fix this without also potentially significantly
-        // impacting the performance of Quiet or PathWithMatch, so we accept
-        // the bug.
+        // impacting the performance of QuietWithMatch or PathWithMatch, so we
+        // accept the bug.
         if self.binary_byte_offset.is_some()
             && searcher.binary_detection().quit_byte().is_some()
         {
@@ -798,7 +782,7 @@ impl<'p, 's, M: Matcher, W: WriteColor> Sink for SummarySink<'p, 's, M, W> {
                     self.write_path_line(searcher)?;
                 }
             }
-            SummaryKind::Quiet => {}
+            SummaryKind::QuietWithMatch | SummaryKind::QuietWithoutMatch => {}
         }
         Ok(())
     }
@@ -1012,9 +996,9 @@ and exhibited clearly, with a label attached.
         let matcher = RegexMatcher::new(r"Watson").unwrap();
         let mut printer = SummaryBuilder::new()
             .kind(SummaryKind::Count)
-            .max_matches(Some(1))
             .build_no_color(vec![]);
         SearcherBuilder::new()
+            .max_matches(Some(1))
             .build()
             .search_reader(&matcher, SHERLOCK, printer.sink(&matcher))
             .unwrap();
@@ -1122,7 +1106,7 @@ and exhibited clearly, with a label attached.
     fn quiet() {
         let matcher = RegexMatcher::new(r"Watson|Sherlock").unwrap();
         let mut printer = SummaryBuilder::new()
-            .kind(SummaryKind::Quiet)
+            .kind(SummaryKind::QuietWithMatch)
             .build_no_color(vec![]);
         let match_count = {
             let mut sink = printer.sink_with_path(&matcher, "sherlock");
@@ -1144,7 +1128,7 @@ and exhibited clearly, with a label attached.
     fn quiet_with_stats() {
         let matcher = RegexMatcher::new(r"Watson|Sherlock").unwrap();
         let mut printer = SummaryBuilder::new()
-            .kind(SummaryKind::Quiet)
+            .kind(SummaryKind::QuietWithMatch)
             .stats(true)
             .build_no_color(vec![]);
         let match_count = {

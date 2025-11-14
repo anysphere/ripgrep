@@ -34,8 +34,7 @@ Register-ArgumentCompleter -Native -CommandName 'rg' -ScriptBlock {
 }
 ";
 
-const TEMPLATE_FLAG: &'static str =
-    "[CompletionResult]::new('!DASH_NAME!', '!NAME!', [CompletionResultType]::ParameterName, '!DOC!')";
+const TEMPLATE_FLAG: &'static str = "[CompletionResult]::new('!DASH_NAME!', '!NAME!', [CompletionResultType]::ParameterName, '!DOC!')";
 
 /// Generate completions for PowerShell.
 ///
@@ -72,7 +71,7 @@ pub(crate) fn generate() -> String {
         }
 
         if let Some(negated) = flag.name_negated() {
-            let dash_name = format!("--{}", negated);
+            let dash_name = format!("--{negated}");
             flags.push_str("\n      ");
             flags.push_str(
                 &TEMPLATE_FLAG

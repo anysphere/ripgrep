@@ -265,8 +265,8 @@ The `--colors` flag is a bit more complicated. The general format is:
   to bold the output or not).
 * `{value}` is determined by the value of `{attribute}`. If
   `{attribute}` is `style`, then `{value}` should be one of `nobold`,
-  `bold`, `nointense`, `intense`, `nounderline` or `underline`. If
-  `{attribute}` is `fg` or `bg`, then `{value}` should be a color.
+  `bold`, `nointense`, `intense`, `nounderline`, `underline`, `noitalic` or
+  `italic`. If `{attribute}` is `fg` or `bg`, then `{value}` should be a color.
 
 A color is specified by either one of eight of English names, a single 256-bit
 number or an RGB triple (with over 16 million possible values, or "true
@@ -285,8 +285,8 @@ As a special case, `--colors '{type}:none'` will clear all colors and styles
 associated with `{type}`, which lets you start with a clean slate (instead of
 building on top of ripgrep's default color settings).
 
-Here's an example that makes highlights the matches with a nice blue background
-with bolded white text:
+Here's an example that highlights the matches with a nice blue background with
+bolded white text:
 
 ```
 $ rg somepattern \
@@ -1055,7 +1055,7 @@ How can I donate to ripgrep or its maintainers?
 
 I welcome [sponsorship](https://github.com/sponsors/BurntSushi/).
 
-Or if you'd prefer, donating to a charitably organization that you like would
+Or if you'd prefer, donating to a charitable organization that you like would
 also be most welcome. My favorites are:
 
 * [The Internet Archive](https://archive.org/donate/)

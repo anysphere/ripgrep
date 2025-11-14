@@ -1,14 +1,14 @@
 class RipgrepBin < Formula
-  version '14.1.1'
+  version '15.0.0'
   desc "Recursively search directories for a regex pattern."
   homepage "https://github.com/BurntSushi/ripgrep"
 
   if OS.mac?
       url "https://github.com/BurntSushi/ripgrep/releases/download/#{version}/ripgrep-#{version}-x86_64-apple-darwin.tar.gz"
-      sha256 "fc87e78f7cb3fea12d69072e7ef3b21509754717b746368fd40d88963630e2b3"
+      sha256 "44128c733d127ddbda461e01225a68b5f9997cfe7635242a797f645ca674a71a"
   elsif OS.linux?
       url "https://github.com/BurntSushi/ripgrep/releases/download/#{version}/ripgrep-#{version}-x86_64-unknown-linux-musl.tar.gz"
-      sha256 "4cf9f2741e6c465ffdb7c26f38056a59e2a2544b51f7cc128ef28337eeae4d8e"
+      sha256 "253ad0fd5fef0d64cba56c70dccdacc1916d4ed70ad057cc525fcdb0c3bbd2a7"
   end
 
   conflicts_with "ripgrep"

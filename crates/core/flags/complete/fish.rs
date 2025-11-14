@@ -2,15 +2,18 @@
 Provides completions for ripgrep's CLI for the fish shell.
 */
 
-use crate::flags::{defs::FLAGS, CompletionType};
+use crate::flags::{CompletionType, defs::FLAGS};
 
 const TEMPLATE: &'static str = "complete -c rg !SHORT! -l !LONG! -d '!DOC!'";
-const TEMPLATE_NEGATED: &'static str =
-    "complete -c rg -l !NEGATED! -n '__fish_contains_opt !SHORT! !LONG!' -d '!DOC!'\n";
+const TEMPLATE_NEGATED: &'static str = "complete -c rg -l !NEGATED! -n '__rg_contains_opt !LONG! !SHORT!' -d '!DOC!'\n";
 
 /// Generate completions for Fish.
+///
+/// Reference: <https://fishshell.com/docs/current/completions.html>
 pub(crate) fn generate() -> String {
     let mut out = String::new();
+    out.push_str(include_str!("prelude.fish"));
+    out.push('\n');
     for flag in FLAGS.iter() {
         let short = match flag.name_short() {
             None => "".to_string(),
@@ -55,6 +58,10 @@ pub(crate) fn generate() -> String {
         out.push_str(&completion);
 
         if let Some(negated) = flag.name_negated() {
+            let short = match flag.name_short() {
+                None => "".to_string(),
+                Some(byte) => char::from(byte).to_string(),
+            };
             out.push_str(
                 &TEMPLATE_NEGATED
                     .replace("!NEGATED!", &negated)
