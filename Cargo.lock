@@ -388,7 +388,7 @@ checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
 
 [[package]]
 name = "ripgrep"
-version = "15.1.0-cursor3"
+version = "15.1.0-cursor4"
 dependencies = [
  "anyhow",
  "bstr",
