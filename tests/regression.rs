@@ -814,9 +814,9 @@ rgtest!(r1159_exit_status, |dir: Dir, _: TestCommand| {
     let mut cmd = dir.command();
     cmd.arg("-q").arg("test").assert_exit_code(0);
 
-    // search with a match and an error gets 2 exit status.
+    // search with a match and a runtime error gets 3 exit status.
     let mut cmd = dir.command();
-    cmd.arg("test").arg("no-file").assert_exit_code(2);
+    cmd.arg("test").arg("no-file").assert_exit_code(3);
 
     // search with a match in --quiet mode and an error gets 0 exit status.
     let mut cmd = dir.command();
@@ -830,13 +830,14 @@ rgtest!(r1159_exit_status, |dir: Dir, _: TestCommand| {
     let mut cmd = dir.command();
     cmd.arg("-q").arg("nada").assert_exit_code(1);
 
-    // search with no match and an error gets 2 exit status.
+    // search with no match and a runtime error gets 3 exit status.
     let mut cmd = dir.command();
-    cmd.arg("nada").arg("no-file").assert_exit_code(2);
+    cmd.arg("nada").arg("no-file").assert_exit_code(3);
 
-    // search with no match in --quiet mode and an error gets 2 exit status.
+    // search with no match in --quiet mode and a runtime error gets 3 exit
+    // status.
     let mut cmd = dir.command();
-    cmd.arg("-q").arg("nada").arg("foo").arg("no-file").assert_exit_code(2);
+    cmd.arg("-q").arg("nada").arg("foo").arg("no-file").assert_exit_code(3);
 });
 
 // See: https://github.com/BurntSushi/ripgrep/issues/1163

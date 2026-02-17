@@ -39,7 +39,11 @@ mod search;
 #[global_allocator]
 static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
-/// Then, as it was, then again it will be.
+/// Exit codes:
+///   0 - At least one match was found.
+///   1 - No matches were found.
+///   2 - Invalid arguments (e.g., bad pattern, unrecognized flag).
+///   3 - One or more non-fatal runtime errors occurred (e.g., file not found).
 fn main() -> ExitCode {
     match run(flags::parse()) {
         Ok(code) => code,
@@ -97,7 +101,11 @@ fn run(result: crate::flags::ParseResult<HiArgs>) -> anyhow::Result<ExitCode> {
     Ok(if matched && (args.quiet() || !messages::errored()) {
         ExitCode::from(0)
     } else if messages::errored() {
-        ExitCode::from(2)
+        // Exit code 3 indicates a non-fatal runtime error occurred during
+        // search (e.g., a file could not be read). This is distinct from
+        // exit code 2, which indicates a fatal error caused by invalid
+        // arguments (e.g., an invalid pattern or unrecognized flag).
+        ExitCode::from(3)
     } else {
         ExitCode::from(1)
     })
