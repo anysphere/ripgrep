@@ -1253,7 +1253,8 @@ mod tests {
         wfile(td.path().join("extra.ignore"), "foo");
         wfile(td.path().join("cursor.ignore"), "!foo");
 
-        let (explicit_gi, err) = Gitignore::new(td.path().join("extra.ignore"));
+        let (explicit_gi, err) =
+            Gitignore::new(td.path().join("extra.ignore"));
         assert!(err.is_none());
         let (cursor_gi, err) = Gitignore::new(td.path().join("cursor.ignore"));
         assert!(err.is_none());
