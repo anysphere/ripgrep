@@ -403,6 +403,7 @@ impl Ignore {
         // match is found here, it unconditionally takes effect regardless of
         // any override globs from `-g/--glob`.
         let mut whitelisted = Match::None;
+        let mut cursor_whitelist = false;
         if !self.0.cursor_ignores.is_empty() {
             let mut m_cursor = Match::None;
             for gi in self.0.cursor_ignores.iter().rev() {
@@ -416,6 +417,7 @@ impl Ignore {
                 return m_cursor;
             } else if m_cursor.is_whitelist() {
                 whitelisted = m_cursor;
+                cursor_whitelist = true;
             }
         }
 
@@ -456,7 +458,8 @@ impl Ignore {
 
         // Continue with standard ignore/type precedence, taking into account
         // any whitelist from cursor-ignores above.
-        if self.has_any_ignore_rules() {
+        // A `--cursor-ignore` whitelist wins over any tree ignore
+        if !cursor_whitelist && self.has_any_ignore_rules() {
             let mat = self.matched_ignore(path, is_dir);
             if mat.is_ignore() {
                 return mat;
@@ -1187,6 +1190,98 @@ mod tests {
         wfile(td.path().join(".ignore"), "!foo");
 
         let (ig, err) = IgnoreBuilder::new().build().add_child(td.path());
+        assert!(err.is_none());
+        assert!(ig.matched("foo", false).is_whitelist());
+    }
+
+    #[test]
+    fn cursor_whitelist_over_gitignore() {
+        let td = tmpdir();
+        mkdirp(td.path().join(".git"));
+        wfile(td.path().join(".gitignore"), "foo");
+        wfile(td.path().join("cursor.ignore"), "!foo");
+
+        let (cursor_gi, err) = Gitignore::new(td.path().join("cursor.ignore"));
+        assert!(err.is_none());
+
+        let (ig, err) = IgnoreBuilder::new()
+            .add_cursor_ignore(cursor_gi)
+            .build()
+            .add_child(td.path());
+        assert!(err.is_none());
+        assert!(ig.matched("foo", false).is_whitelist());
+    }
+
+    #[test]
+    fn cursor_whitelist_over_ignore() {
+        let td = tmpdir();
+        wfile(td.path().join(".ignore"), "foo");
+        wfile(td.path().join("cursor.ignore"), "!foo");
+
+        let (cursor_gi, err) = Gitignore::new(td.path().join("cursor.ignore"));
+        assert!(err.is_none());
+
+        let (ig, err) = IgnoreBuilder::new()
+            .add_cursor_ignore(cursor_gi)
+            .build()
+            .add_child(td.path());
+        assert!(err.is_none());
+        assert!(ig.matched("foo", false).is_whitelist());
+    }
+
+    #[test]
+    fn cursor_whitelist_over_rgignore() {
+        let td = tmpdir();
+        wfile(td.path().join(".rgignore"), "foo");
+        wfile(td.path().join("cursor.ignore"), "!foo");
+
+        let (cursor_gi, err) = Gitignore::new(td.path().join("cursor.ignore"));
+        assert!(err.is_none());
+
+        let (ig, err) = IgnoreBuilder::new()
+            .add_custom_ignore_filename(".rgignore")
+            .add_cursor_ignore(cursor_gi)
+            .build()
+            .add_child(td.path());
+        assert!(err.is_none());
+        assert!(ig.matched("foo", false).is_whitelist());
+    }
+
+    #[test]
+    fn cursor_whitelist_over_explicit_ignore() {
+        let td = tmpdir();
+        wfile(td.path().join("extra.ignore"), "foo");
+        wfile(td.path().join("cursor.ignore"), "!foo");
+
+        let (explicit_gi, err) =
+            Gitignore::new(td.path().join("extra.ignore"));
+        assert!(err.is_none());
+        let (cursor_gi, err) = Gitignore::new(td.path().join("cursor.ignore"));
+        assert!(err.is_none());
+
+        let (ig, err) = IgnoreBuilder::new()
+            .add_ignore(explicit_gi)
+            .add_cursor_ignore(cursor_gi)
+            .build()
+            .add_child(td.path());
+        assert!(err.is_none());
+        assert!(ig.matched("foo", false).is_whitelist());
+    }
+
+    #[test]
+    fn cursor_whitelist_over_git_exclude() {
+        let td = tmpdir();
+        mkdirp(td.path().join(".git/info"));
+        wfile(td.path().join(".git/info/exclude"), "foo");
+        wfile(td.path().join("cursor.ignore"), "!foo");
+
+        let (cursor_gi, err) = Gitignore::new(td.path().join("cursor.ignore"));
+        assert!(err.is_none());
+
+        let (ig, err) = IgnoreBuilder::new()
+            .add_cursor_ignore(cursor_gi)
+            .build()
+            .add_child(td.path());
         assert!(err.is_none());
         assert!(ig.matched("foo", false).is_whitelist());
     }

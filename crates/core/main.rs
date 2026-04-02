@@ -300,7 +300,7 @@ fn search_parallel_sorted(
                 Ok(res) => res,
                 // A broken pipe means graceful termination.
                 Err(err) if err.kind() == std::io::ErrorKind::BrokenPipe => {
-                    return WalkState::Quit
+                    return WalkState::Quit;
                 }
                 Err(err) => {
                     err_message!("{}: {}", haystack.path().display(), err);
@@ -359,11 +359,7 @@ fn search_parallel_sorted(
                 (None, None) => CmpOrdering::Equal,
             },
         };
-        if reverse {
-            ord.reverse()
-        } else {
-            ord
-        }
+        if reverse { ord.reverse() } else { ord }
     });
 
     // Print in order.
@@ -500,11 +496,7 @@ fn files_parallel(args: &HiArgs) -> anyhow::Result<bool> {
                     (None, None) => CmpOrdering::Equal,
                 },
             };
-            if reverse {
-                ord.reverse()
-            } else {
-                ord
-            }
+            if reverse { ord.reverse() } else { ord }
         });
         for item in items {
             if let Err(err) = path_printer.write(&item.path) {
