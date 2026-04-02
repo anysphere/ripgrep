@@ -458,14 +458,9 @@ impl Ignore {
 
         // Continue with standard ignore/type precedence, taking into account
         // any whitelist from cursor-ignores above.
-        if self.has_any_ignore_rules() {
-            let mut mat = self.matched_ignore(path, is_dir);
-            // A `--cursor-ignore` whitelist wins over any tree ignore: if the
-            // merged tree result is Ignore, replace it once with the cursor
-            // whitelist (equivalent to dropping every layer's Ignore before merge).
-            if cursor_whitelist && mat.is_ignore() {
-                mat = whitelisted.clone();
-            }
+        // A `--cursor-ignore` whitelist wins over any tree ignore
+        if !cursor_whitelist && self.has_any_ignore_rules() {
+            let mat = self.matched_ignore(path, is_dir);
             if mat.is_ignore() {
                 return mat;
             } else if mat.is_whitelist() {
@@ -486,9 +481,6 @@ impl Ignore {
 
     /// Performs matching only on the ignore files for this directory and
     /// all parent directories.
-    ///
-    /// [`Ignore::matched`] applies `--cursor-ignore` whitelist on top of this
-    /// result when appropriate (see there).
     fn matched_ignore<'a>(
         &'a self,
         path: &Path,
