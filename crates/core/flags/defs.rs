@@ -3278,6 +3278,11 @@ applied with higher precedence than -g/--glob overrides. These rules can
 exclude files even when a glob would otherwise include them. Multiple files
 may be specified by repeating this flag; later files have higher precedence.
 .sp
+Whitelist rules (lines starting with \fB!\fP) override ignore rules from
+every other ignore source, including \fB.gitignore\fP, \fB.ignore\fP,
+\fB.rgignore\fP, \fB--ignore-file\fP, global gitignore, and
+\fB.git/info/exclude\fP.
+.sp
 This behaves like \flag{ignore-file} except for its higher precedence.
 "
     }
