@@ -27,6 +27,9 @@ autotests = false
 edition = "2024"
 rust-version = "1.85"
 
+[lib]
+path = "src/lib.rs"
+
 [[bin]]
 bench = false
 path = "crates/core/main.rs"
