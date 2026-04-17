@@ -1,0 +1,9 @@
+[package]
+name = "intentionally_buggy"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[features]
+# Enable to exercise compile-failure paths in CI (e.g. `cargo check -F force_compile_error`).
+force_compile_error = []

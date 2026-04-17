@@ -48,6 +48,8 @@ members = [
   "crates/searcher",
   "crates/ignore",
 ]
+# Standalone crate for CI fixture testing (`cargo check --manifest-path ci/fixtures/...`).
+exclude = ["ci/fixtures/intentionally_buggy"]
 
 [dependencies]
 anyhow = "1.0.75"
