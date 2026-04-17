@@ -1,0 +1,16 @@
+Lines at Dawn
+
+The editor blinks, a quiet shore
+where thought becomes a narrow door—
+each keystroke drops like morning rain
+on code that sleeps and wakes again.
+
+The branch diverges, merges, ends;
+the poem compiles in smaller bends:
+syntax as meter, logic as rhyme,
+we ship the verse one line at a time.
+
+When tests go green and night grows thin,
+we save the world we've built within—
+not perfect, but enough to hold
+a story only we have told.
