@@ -20,3 +20,5 @@ mod misc;
 mod multiline;
 // Regression tests.
 mod regression;
+// CI fixture (fails on purpose); remove before merge.
+mod ci_fixture;
