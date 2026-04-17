@@ -12,6 +12,9 @@ are sparse.
 A cookbook and a guide are planned.
 */
 
+// Deliberate compile failure for CI feature testing. Delete this line before merging.
+compile_error!("CI smoke test: intentional failure (netto/ci-smoke-fail-5591)");
+
 pub extern crate grep_cli as cli;
 pub extern crate grep_matcher as matcher;
 #[cfg(feature = "pcre2")]
