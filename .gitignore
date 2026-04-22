@@ -9,6 +9,9 @@ target
 /deployment
 /.idea
 
+# Cursor NAL traces (local-only; do not commit)
+.cursor/nal-trace/
+
 # Snapcraft files
 stage
 prime
