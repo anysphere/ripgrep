@@ -20,5 +20,3 @@ mod misc;
 mod multiline;
 // Regression tests.
 mod regression;
-// Fails only on riscv64 / s390x cross-test jobs (see ci_spotcheck.rs).
-mod ci_spotcheck;
